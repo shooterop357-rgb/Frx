@@ -9,34 +9,40 @@ from telegram.ext import (
 
 BOT_TOKEN = "8437918087:AAEkAr2ZmCrQNF6UC2jde0REClfmiIglSRE"
 
-BAD_WORDS = {
+# hidden default words
+DEFAULT_BAD_WORDS = {
     "sex", "porn", "fuck", "fucking", "bitch", "asshole",
     "nude", "nudes", "xxx", "boobs", "dick", "pussy",
     "slut", "horny", "nsfw", "rape"
 }
 
+# manually added words (only these will show)
+CUSTOM_BAD_WORDS = set()
+
 def is_admin(member):
     return member.status in ("administrator", "creator")
 
-# /start – professional help
+# /start – EXACT welcome text
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 Smart Moderation Bot\n\n"
-        "This bot helps maintain a clean, safe, and respectful group environment.\n\n"
-        "🔹 Features:\n"
-        "• Automatically deletes restricted or abusive words\n"
-        "• Admin messages are always protected\n"
-        "• Operates silently in the background\n\n"
-        "🔹 Available Commands:\n"
-        "/addword <word>  – Add a word to the blocked list (Admin only)\n"
-        "/delword <word>  – Remove a word from the blocked list (Admin only)\n"
-        "/listwords       – View blocked words (Admin only)\n\n"
-        "Designed for professional group moderation."
+        "Keeps your group clean, safe, and respectful.\n\n"
+        "Features:\n"
+        "• Auto-deletes abusive or restricted words\n"
+        "• Admin messages are protected\n"
+        "• Works silently in background\n\n"
+        "Admin Commands:\n"
+        "/addword <word> – Add blocked word\n"
+        "/delword <word> – Remove blocked word\n"
+        "/listwords      – View blocked words"
     )
 
-# bad word detector (admin safe)
+# filter (ignore commands)
 async def bad_word_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
+        return
+
+    if update.message.text.startswith("/"):
         return
 
     member = await context.bot.get_chat_member(
@@ -44,59 +50,90 @@ async def bad_word_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update.effective_user.id
     )
 
-    # ignore admins
     if is_admin(member):
         return
 
     text = update.message.text.lower()
-    for word in BAD_WORDS:
+    for word in DEFAULT_BAD_WORDS.union(CUSTOM_BAD_WORDS):
         if word in text:
             await update.message.delete()
             break
 
-# add word (admin only)
+# add word
 async def add_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
     member = await context.bot.get_chat_member(
-        update.effective_chat.id, update.effective_user.id
+        update.effective_chat.id,
+        update.effective_user.id
     )
-    if not is_admin(member) or not context.args:
+
+    if not is_admin(member):
+        await update.message.reply_text(
+            "🤚 I am listening only for Administrations in this group."
+        )
         return
 
-    BAD_WORDS.add(context.args[0].lower())
-    await update.message.delete()
+    if not context.args or len(context.args) > 10:
+        return
 
-# remove word (admin only)
+    for word in context.args:
+        CUSTOM_BAD_WORDS.add(word.lower().strip())
+
+    await update.message.reply_text("✅ Added")
+
+# remove word
 async def del_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
     member = await context.bot.get_chat_member(
-        update.effective_chat.id, update.effective_user.id
+        update.effective_chat.id,
+        update.effective_user.id
     )
-    if not is_admin(member) or not context.args:
+
+    if not is_admin(member):
+        await update.message.reply_text(
+            "🤚 I am listening only for Administrations in this group."
+        )
         return
 
-    BAD_WORDS.discard(context.args[0].lower())
-    await update.message.delete()
+    if not context.args:
+        return
 
-# list words (admin only)
+    for word in context.args:
+        CUSTOM_BAD_WORDS.discard(word.lower().strip())
+
+    await update.message.reply_text("🗑️ Removed")
+
+# list only manual words
 async def list_words(update: Update, context: ContextTypes.DEFAULT_TYPE):
     member = await context.bot.get_chat_member(
-        update.effective_chat.id, update.effective_user.id
+        update.effective_chat.id,
+        update.effective_user.id
     )
+
     if not is_admin(member):
+        await update.message.reply_text(
+            "🤚 I am listening only for Administrations in this group."
+        )
+        return
+
+    if not CUSTOM_BAD_WORDS:
+        await update.message.reply_text("Nothing added")
         return
 
     await update.message.reply_text(
-        "🚫 Blocked words:\n" + ", ".join(sorted(BAD_WORDS))
+        ", ".join(sorted(CUSTOM_BAD_WORDS))
     )
 
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(
-    MessageHandler(filters.TEXT & filters.ChatType.GROUPS, bad_word_filter)
-)
 app.add_handler(CommandHandler("addword", add_word))
 app.add_handler(CommandHandler("delword", del_word))
 app.add_handler(CommandHandler("listwords", list_words))
+app.add_handler(
+    MessageHandler(
+        filters.TEXT & (filters.ChatType.GROUPS | filters.ChatType.SUPERGROUP),
+        bad_word_filter
+    )
+)
 
-print("Smart Moderation Bot running (welcome removed)...")
+print("Smart Moderation Bot running...")
 app.run_polling()
