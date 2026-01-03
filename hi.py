@@ -98,17 +98,21 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
 
     await update.message.reply_text(
-        "<b>Smart Moderation Bot</b>\n\n"
-        "• Instant abuse action\n"
-        "• Admin-safe silent cleanup\n"
-        "• Fast countdown with progress bar\n"
-        "• Auto delete after timeout\n"
-        "• Daily group-wise reports\n\n"
-        "<b>Status</b>: Active",
+        "<b>🤖 Smart Moderation Bot</b>\n\n"
+        "<b>Purpose</b>\n"
+        "• Maintain respectful communication\n"
+        "• Automatically block abusive language\n"
+        "• Apply warnings before action\n\n"
+        "<b>How it Works</b>\n"
+        "• Silent background monitoring\n"
+        "• 5 warnings trigger a 5-minute timeout\n"
+        "• Live second-by-second countdown\n"
+        "• Automatic cleanup after timeout\n"
+        "• Daily group-wise moderation report\n\n"
+        "<b>Status:</b> Active",
         parse_mode="HTML",
         reply_markup=keyboard
     )
-
 # ================= OWNER COMMANDS =================
 async def add_word(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
@@ -118,7 +122,7 @@ async def add_word(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     for w in ctx.args:
         CUSTOM_BAD_WORDS.add(w.lower().strip())
     save_words()
-    await update.message.reply_text("Added")
+    await update.message.reply_text("✅ Added")
 
 async def remove_word(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
@@ -128,7 +132,7 @@ async def remove_word(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     for w in ctx.args:
         CUSTOM_BAD_WORDS.discard(w.lower().strip())
     save_words()
-    await update.message.reply_text("Removed")
+    await update.message.reply_text("🗑️ Removed")
 
 # ================= FILTER =================
 async def bad_word_filter(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
