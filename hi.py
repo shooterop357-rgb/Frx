@@ -1,3 +1,5 @@
+# ================= SMART MODERATION BOT (FINAL – NO TIMER) =================
+
 import asyncio
 import json
 import re
@@ -26,8 +28,6 @@ IGNORE_USER_ID = 5436530930
 
 WORDS_FILE = "words.json"
 GROUPS_FILE = "groups.json"
-
-TIMEOUT_MINUTES = 5
 
 # ================= DATA =================
 DEFAULT_BAD_WORDS = {
@@ -99,20 +99,18 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "<b>🤖 Smart Moderation Bot</b>\n\n"
-        "<b>Purpose</b>\n"
+        "<b>🎯 Purpose</b>\n"
         "• Maintain respectful communication\n"
-        "• Automatically block abusive language\n"
-        "• Apply warnings before action\n\n"
-        "<b>How it Works</b>\n"
+        "• Automatically block abusive language\n\n"
+        "<b>⚙️ How it Works</b>\n"
         "• Silent background monitoring\n"
-        "• 5 warnings trigger a 5-minute timeout\n"
-        "• Live second-by-second countdown\n"
-        "• Automatic cleanup after timeout\n"
+        "• Abusive messages are removed instantly\n"
         "• Daily group-wise moderation report\n\n"
-        "<b>Status:</b> Active",
+        "<b>🟢 Status:</b> Active",
         parse_mode="HTML",
         reply_markup=keyboard
     )
+
 # ================= OWNER COMMANDS =================
 async def add_word(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
@@ -157,6 +155,7 @@ async def bad_word_filter(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     clean = normalize(text)
 
     matched = False
+
     for word in DEFAULT_BAD_WORDS.union(CUSTOM_BAD_WORDS):
         if word in clean:
             matched = True
@@ -174,7 +173,7 @@ async def bad_word_filter(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not matched:
         return
 
-    # delete abusive message
+    # delete abusive message (admin + normal)
     await update.message.delete()
     GROUP_STATS[chat_id] += 1
     save_groups()
@@ -183,56 +182,8 @@ async def bad_word_filter(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if is_admin(member):
         return
 
-    # normal user → direct mute
-    await mute_with_progress(ctx, update.effective_chat.id, user)
-
-# ================= FAST MUTE WITH PROGRESS BAR =================
-async def mute_with_progress(ctx, chat_id, user):
-    until = datetime.utcnow() + timedelta(minutes=TIMEOUT_MINUTES)
-
-    await ctx.bot.restrict_chat_member(
-        chat_id,
-        user.id,
-        permissions={},
-        until_date=until
-    )
-
-    total = TIMEOUT_MINUTES * 60
-    bar_len = 12
-
-    msg = await ctx.bot.send_message(
-        chat_id,
-        f"⚠️ Inappropriate language detected.\n"
-        f"{user.first_name}, you are muted for 5 minutes.\n\n"
-        f"⏳ [░░░░░░░░░░░░] 05:00"
-    )
-
-    async def countdown():
-        remaining = total
-        while remaining > 0:
-            filled = int(((total - remaining) / total) * bar_len)
-            bar = "█" * filled + "░" * (bar_len - filled)
-            m, s = divmod(remaining, 60)
-
-            try:
-                await msg.edit_text(
-                    f"⚠️ Inappropriate language detected.\n"
-                    f"{user.first_name}, you are muted for 5 minutes.\n\n"
-                    f"⏳ [{bar}] {m:02d}:{s:02d}"
-                )
-            except:
-                pass
-
-            await asyncio.sleep(1)
-            remaining -= 1
-
-        # ✅ auto delete after 5 minutes
-        try:
-            await msg.delete()
-        except:
-            pass
-
-    asyncio.create_task(countdown())
+    # normal user → no mute, no reply (clean mode)
+    return
 
 # ================= DAILY REPORT LOOP =================
 async def daily_report_loop(app):
@@ -259,7 +210,7 @@ async def daily_report_loop(app):
 
         save_groups()
 
-# ================= STARTUP HOOK (FIX) =================
+# ================= STARTUP HOOK =================
 async def on_startup(app):
     app.create_task(daily_report_loop(app))
 
