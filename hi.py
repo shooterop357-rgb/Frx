@@ -1,4 +1,4 @@
-# ================= SMART MODERATION BOT (FINAL LOCKED BUILD) =================
+# ================= SMART MODERATION BOT (FINAL FAST BUILD) =================
 
 import asyncio
 import json
@@ -17,11 +17,10 @@ from telegram.ext import (
     ContextTypes,
     MessageHandler,
     CommandHandler,
-    ChatMemberHandler,
     filters
 )
 
-# ================= FINAL CONFIG =================
+# ================= CONFIG =================
 BOT_TOKEN = "8437918087:AAEkAr2ZmCrQNF6UC2jde0REClfmiIglSRE"
 
 OWNER_ID = 5436530930          # special user (full control)
@@ -30,7 +29,6 @@ IGNORE_USER_ID = 5436530930   # fully ignored by moderation
 WORDS_FILE = "words.json"
 GROUPS_FILE = "groups.json"
 
-MAX_WARNINGS = 5
 TIMEOUT_MINUTES = 5
 
 # ================= DATA =================
@@ -49,8 +47,9 @@ SLANG_PATTERNS = [
     r"\b(g[\W_]*a[\W_]*n[\W_]*d)\b",
 ]
 
+EMOJI_ABUSE_PATTERN = re.compile(r"[🍑🍆💦🤬🤮🤢🖕]", re.UNICODE)
+
 CUSTOM_BAD_WORDS = set()
-WARNINGS = {}
 GROUP_STATS = {}
 
 # ================= FILE UTILS =================
@@ -91,16 +90,6 @@ def is_admin(member):
 def normalize(text):
     return re.sub(r"[^a-z]", "", text.lower())
 
-# ================= BOT ADDED TO GROUP =================
-async def on_bot_added(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    chat = update.chat_member.chat
-    new = update.chat_member.new_chat_member
-    if new.user.is_bot and new.user.id == ctx.bot.id:
-        gid = str(chat.id)
-        if gid not in GROUP_STATS:
-            GROUP_STATS[gid] = 0
-            save_groups()
-
 # ================= /START =================
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update.effective_user.id):
@@ -112,24 +101,19 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "<b>Smart Moderation Bot</b>\n\n"
-        "<b>Purpose</b>\n"
-        "• Maintain respectful communication\n"
-        "• Automatically block abusive language\n"
-        "• Apply warnings before action\n\n"
-        "<b>How it Works</b>\n"
-        "• Silent background monitoring\n"
-        "• 5 warnings trigger a 5-minute timeout\n"
-        "• Live second-by-second countdown\n"
-        "• Automatic cleanup after timeout\n"
-        "• Daily group-wise moderation report\n\n"
+        "• Instant abuse action\n"
+        "• Admin-safe silent cleanup\n"
+        "• Fast live countdown with progress bar\n"
+        "• Auto cleanup after timeout\n"
+        "• Daily group-wise reports\n\n"
         "<b>Status</b>: Active",
         parse_mode="HTML",
         reply_markup=keyboard
     )
 
 # ================= OWNER COMMANDS =================
-async def addwrod(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if not is_owner(update.effective_user.id):
+async def add_word(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != OWNER_ID:
         return
     if not ctx.args or len(ctx.args) > 20:
         return
@@ -138,8 +122,8 @@ async def addwrod(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     save_words()
     await update.message.reply_text("Added")
 
-async def removeword(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if not is_owner(update.effective_user.id):
+async def remove_word(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != OWNER_ID:
         return
     if not ctx.args or len(ctx.args) > 20:
         return
@@ -166,41 +150,42 @@ async def bad_word_filter(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     member = await ctx.bot.get_chat_member(update.effective_chat.id, user.id)
-    if is_admin(member):
-        return
 
     text = update.message.text.lower()
     clean = normalize(text)
 
+    matched = False
     for word in DEFAULT_BAD_WORDS.union(CUSTOM_BAD_WORDS):
         if word in clean:
-            await update.message.delete()
-            GROUP_STATS[chat_id] += 1
-            save_groups()
-            await handle_violation(ctx, update.effective_chat.id, user)
-            return
+            matched = True
+            break
 
-    for pattern in SLANG_PATTERNS:
-        if re.search(pattern, text):
-            await update.message.delete()
-            GROUP_STATS[chat_id] += 1
-            save_groups()
-            await handle_violation(ctx, update.effective_chat.id, user)
-            return
+    if not matched:
+        for pattern in SLANG_PATTERNS:
+            if re.search(pattern, text):
+                matched = True
+                break
 
-async def handle_violation(ctx, chat_id, user):
-    WARNINGS[user.id] = WARNINGS.get(user.id, 0) + 1
-    if WARNINGS[user.id] < MAX_WARNINGS:
-        await ctx.bot.send_message(
-            chat_id,
-            "Please maintain respectful and professional language."
-        )
-    else:
-        WARNINGS.pop(user.id, None)
-        await mute_with_countdown(ctx, chat_id, user)
+    if not matched and EMOJI_ABUSE_PATTERN.search(update.message.text):
+        matched = True
 
-# ================= MUTE WITH LIVE COUNTDOWN =================
-async def mute_with_countdown(ctx, chat_id, user):
+    if not matched:
+        return
+
+    # delete message (admin + normal)
+    await update.message.delete()
+    GROUP_STATS[chat_id] += 1
+    save_groups()
+
+    # admin → silent delete only
+    if is_admin(member):
+        return
+
+    # normal user → direct mute
+    await mute_with_progress(ctx, update.effective_chat.id, user)
+
+# ================= FAST MUTE WITH PROGRESS BAR =================
+async def mute_with_progress(ctx, chat_id, user):
     until = datetime.utcnow() + timedelta(minutes=TIMEOUT_MINUTES)
 
     await ctx.bot.restrict_chat_member(
@@ -210,23 +195,36 @@ async def mute_with_countdown(ctx, chat_id, user):
         until_date=until
     )
 
+    total_seconds = TIMEOUT_MINUTES * 60
+    bar_len = 12
+
     msg = await ctx.bot.send_message(
         chat_id,
-        f"{user.first_name} muted.\nTime remaining: 05:00"
+        f"⚠️ Inappropriate language detected.\n"
+        f"{user.first_name}, you are muted for 5 minutes.\n\n"
+        f"⏳ [░░░░░░░░░░░░] 05:00"
     )
 
     async def countdown():
-        seconds = TIMEOUT_MINUTES * 60
-        while seconds > 0:
-            m, s = divmod(seconds, 60)
-            await asyncio.sleep(1)
-            seconds -= 1
+        remaining = total_seconds
+        while remaining > 0:
+            elapsed = total_seconds - remaining
+            filled = int((elapsed / total_seconds) * bar_len)
+            bar = "█" * filled + "░" * (bar_len - filled)
+            m, s = divmod(remaining, 60)
+
             try:
                 await msg.edit_text(
-                    f"{user.first_name} muted.\nTime remaining: {m:02d}:{s:02d}"
+                    f"⚠️ Inappropriate language detected.\n"
+                    f"{user.first_name}, you are muted for 5 minutes.\n\n"
+                    f"⏳ [{bar}] {m:02d}:{s:02d}"
                 )
             except:
                 pass
+
+            await asyncio.sleep(1)
+            remaining -= 1
+
         try:
             await msg.delete()
         except:
@@ -234,21 +232,30 @@ async def mute_with_countdown(ctx, chat_id, user):
 
     asyncio.create_task(countdown())
 
-# ================= DAILY REPORT =================
-async def daily_report(ctx: ContextTypes.DEFAULT_TYPE):
-    for gid, count in list(GROUP_STATS.items()):
-        try:
-            await ctx.bot.send_message(
-                int(gid),
-                "<b>📊 Daily Moderation Report</b>\n\n"
-                f"• Total abusive messages blocked today: <b>{count}</b>\n\n"
-                "System status: Active",
-                parse_mode="HTML"
-            )
-            GROUP_STATS[gid] = 0
-        except:
-            pass
-    save_groups()
+# ================= DAILY REPORT LOOP =================
+async def daily_report_loop(app):
+    while True:
+        now = datetime.now()
+        target = datetime.combine(now.date(), time(23, 59))
+        if now >= target:
+            target += timedelta(days=1)
+
+        await asyncio.sleep((target - now).total_seconds())
+
+        for gid, count in list(GROUP_STATS.items()):
+            try:
+                await app.bot.send_message(
+                    int(gid),
+                    "<b>📊 Daily Moderation Report</b>\n\n"
+                    f"• Total abusive messages removed today: <b>{count}</b>\n\n"
+                    "System status: Active",
+                    parse_mode="HTML"
+                )
+                GROUP_STATS[gid] = 0
+            except:
+                pass
+
+        save_groups()
 
 # ================= SAFE SHUTDOWN =================
 def shutdown_handler(sig, frame):
@@ -265,10 +272,9 @@ load_groups()
 
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-app.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
+app.add_handler(CommandHandler(["addword", "addd"], add_word))
+app.add_handler(CommandHandler("removeword", remove_word))
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("addwrod", addwrod))
-app.add_handler(CommandHandler("removeword", removeword))
 
 app.add_handler(
     MessageHandler(
@@ -277,10 +283,7 @@ app.add_handler(
     )
 )
 
-app.job_queue.run_daily(
-    daily_report,
-    time=time(hour=23, minute=59)
-)
+asyncio.create_task(daily_report_loop(app))
 
 print("Smart Moderation Bot running...")
 app.run_polling()
