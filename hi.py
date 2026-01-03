@@ -1,4 +1,4 @@
-# ================= SMART MODERATION BOT (FINAL WORKING BUILD) =================
+# ================= SMART MODERATION BOT (FINAL BUILD) =================
 
 import asyncio
 import json
@@ -23,8 +23,9 @@ from telegram.ext import (
 # ================= CONFIG =================
 BOT_TOKEN = "8437918087:AAEkAr2ZmCrQNF6UC2jde0REClfmiIglSRE"
 
-OWNER_ID = 5436530930          # special user
-IGNORE_USER_ID = 5436530930   # ignored from moderation
+BOT_USERNAME = "SafeTalkFilterBot"
+OWNER_ID = 5436530930
+IGNORE_USER_ID = 5436530930
 
 WORDS_FILE = "words.json"
 GROUPS_FILE = "groups.json"
@@ -39,7 +40,7 @@ SLANG_PATTERNS = [
     r"\b(m[\W_]*c)\b",
     r"\b(b[\W_]*c)\b",
     r"\b(m[\W_]*d[\W_]*r)\b",
-    r"\b(r[\W_]*n[\W_]*n[\W_]*d)\b",
+    r"\b(r[\W_]*n[\W_]*d)\b",
     r"\b(l[\W_]*o[\W_]*d)\b",
 ]
 
@@ -89,11 +90,21 @@ def normalize(text):
 
 # ================= /START =================
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
-        return
-
     keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("Support", url="https://t.me/Frx_Shooter")]]
+        [
+            [
+                InlineKeyboardButton(
+                    "➕ Add to Group",
+                    url=f"https://t.me/{BOT_USERNAME}?startgroup=true"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "Support",
+                    url="https://t.me/Frx_Shooter"
+                )
+            ]
+        ]
     )
 
     await update.message.reply_text(
@@ -178,13 +189,13 @@ async def bad_word_filter(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     GROUP_STATS[chat_id] += 1
     save_groups()
 
-    # admin → silent delete
+    # admin → silent delete only
     if is_admin(member):
         return
 
     uid = user.id
 
-    # first time warning
+    # first-time warning only
     if not USER_WARNED.get(uid):
         USER_WARNED[uid] = True
         await ctx.bot.send_message(
