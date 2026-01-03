@@ -1,4 +1,4 @@
-# ================= SMART MODERATION BOT (FINAL – NO TIMER) =================
+# ================= SMART MODERATION BOT (FINAL WORKING BUILD) =================
 
 import asyncio
 import json
@@ -21,10 +21,10 @@ from telegram.ext import (
 )
 
 # ================= CONFIG =================
-BOT_TOKEN = "8437918087:AAEkAr2ZmCrQNF6UC2jde0REClfmiIglSRE"
+BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 
-OWNER_ID = 5436530930
-IGNORE_USER_ID = 5436530930
+OWNER_ID = 5436530930          # special user
+IGNORE_USER_ID = 5436530930   # ignored from moderation
 
 WORDS_FILE = "words.json"
 GROUPS_FILE = "groups.json"
@@ -39,16 +39,15 @@ SLANG_PATTERNS = [
     r"\b(m[\W_]*c)\b",
     r"\b(b[\W_]*c)\b",
     r"\b(m[\W_]*d[\W_]*r)\b",
-    r"\b(r[\W_]*n[\W_]*d)\b",
-    r"\b(c[\W_]*h[\W_]*t)\b",
+    r"\b(r[\W_]*n[\W_]*n[\W_]*d)\b",
     r"\b(l[\W_]*o[\W_]*d)\b",
-    r"\b(g[\W_]*a[\W_]*n[\W_]*d)\b",
 ]
 
 EMOJI_ABUSE_PATTERN = re.compile(r"[🍑🍆💦🤬🤮🤢🖕]", re.UNICODE)
 
 CUSTOM_BAD_WORDS = set()
-GROUP_STATS = {}
+GROUP_STATS = {}      # chat_id : count
+USER_WARNED = {}      # user_id : True
 
 # ================= FILE UTILS =================
 def load_words():
@@ -104,7 +103,8 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "• Automatically block abusive language\n\n"
         "<b>⚙️ How it Works</b>\n"
         "• Silent background monitoring\n"
-        "• Abusive messages are removed instantly\n"
+        "• First violation shows a warning\n"
+        "• Further violations are deleted automatically\n"
         "• Daily group-wise moderation report\n\n"
         "<b>🟢 Status:</b> Active",
         parse_mode="HTML",
@@ -173,17 +173,25 @@ async def bad_word_filter(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not matched:
         return
 
-    # delete abusive message (admin + normal)
+    # delete abusive message
     await update.message.delete()
     GROUP_STATS[chat_id] += 1
     save_groups()
 
-    # admin → silent delete only
+    # admin → silent delete
     if is_admin(member):
         return
 
-    # normal user → no mute, no reply (clean mode)
-    return
+    uid = user.id
+
+    # first time warning
+    if not USER_WARNED.get(uid):
+        USER_WARNED[uid] = True
+        await ctx.bot.send_message(
+            update.effective_chat.id,
+            "⚠️ Abusive language detected.\n"
+            "Further messages like this will be deleted automatically."
+        )
 
 # ================= DAILY REPORT LOOP =================
 async def daily_report_loop(app):
