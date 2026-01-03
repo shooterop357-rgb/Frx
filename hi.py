@@ -1,5 +1,3 @@
-# ================= SMART MODERATION BOT (FINAL FAST BUILD) =================
-
 import asyncio
 import json
 import re
@@ -23,8 +21,8 @@ from telegram.ext import (
 # ================= CONFIG =================
 BOT_TOKEN = "8437918087:AAEkAr2ZmCrQNF6UC2jde0REClfmiIglSRE"
 
-OWNER_ID = 5436530930          # special user (full control)
-IGNORE_USER_ID = 5436530930   # fully ignored by moderation
+OWNER_ID = 5436530930
+IGNORE_USER_ID = 5436530930
 
 WORDS_FILE = "words.json"
 GROUPS_FILE = "groups.json"
@@ -92,7 +90,7 @@ def normalize(text):
 
 # ================= /START =================
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if not is_owner(update.effective_user.id):
+    if update.effective_user.id != OWNER_ID:
         return
 
     keyboard = InlineKeyboardMarkup(
@@ -103,8 +101,8 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "<b>Smart Moderation Bot</b>\n\n"
         "• Instant abuse action\n"
         "• Admin-safe silent cleanup\n"
-        "• Fast live countdown with progress bar\n"
-        "• Auto cleanup after timeout\n"
+        "• Fast countdown with progress bar\n"
+        "• Auto delete after timeout\n"
         "• Daily group-wise reports\n\n"
         "<b>Status</b>: Active",
         parse_mode="HTML",
@@ -172,7 +170,7 @@ async def bad_word_filter(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not matched:
         return
 
-    # delete message (admin + normal)
+    # delete abusive message
     await update.message.delete()
     GROUP_STATS[chat_id] += 1
     save_groups()
@@ -195,7 +193,7 @@ async def mute_with_progress(ctx, chat_id, user):
         until_date=until
     )
 
-    total_seconds = TIMEOUT_MINUTES * 60
+    total = TIMEOUT_MINUTES * 60
     bar_len = 12
 
     msg = await ctx.bot.send_message(
@@ -206,10 +204,9 @@ async def mute_with_progress(ctx, chat_id, user):
     )
 
     async def countdown():
-        remaining = total_seconds
+        remaining = total
         while remaining > 0:
-            elapsed = total_seconds - remaining
-            filled = int((elapsed / total_seconds) * bar_len)
+            filled = int(((total - remaining) / total) * bar_len)
             bar = "█" * filled + "░" * (bar_len - filled)
             m, s = divmod(remaining, 60)
 
@@ -225,6 +222,7 @@ async def mute_with_progress(ctx, chat_id, user):
             await asyncio.sleep(1)
             remaining -= 1
 
+        # ✅ auto delete after 5 minutes
         try:
             await msg.delete()
         except:
@@ -257,6 +255,10 @@ async def daily_report_loop(app):
 
         save_groups()
 
+# ================= STARTUP HOOK (FIX) =================
+async def on_startup(app):
+    app.create_task(daily_report_loop(app))
+
 # ================= SAFE SHUTDOWN =================
 def shutdown_handler(sig, frame):
     save_groups()
@@ -270,7 +272,12 @@ signal.signal(signal.SIGTERM, shutdown_handler)
 load_words()
 load_groups()
 
-app = ApplicationBuilder().token(BOT_TOKEN).build()
+app = (
+    ApplicationBuilder()
+    .token(BOT_TOKEN)
+    .post_init(on_startup)
+    .build()
+)
 
 app.add_handler(CommandHandler(["addword", "addd"], add_word))
 app.add_handler(CommandHandler("removeword", remove_word))
@@ -282,8 +289,6 @@ app.add_handler(
         bad_word_filter
     )
 )
-
-asyncio.create_task(daily_report_loop(app))
 
 print("Smart Moderation Bot running...")
 app.run_polling()
