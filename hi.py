@@ -21,7 +21,7 @@ from telegram.ext import (
 )
 
 # ================= CONFIG =================
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+BOT_TOKEN = "8437918087:AAEkAr2ZmCrQNF6UC2jde0REClfmiIglSRE"
 
 OWNER_ID = 5436530930          # special user
 IGNORE_USER_ID = 5436530930   # ignored from moderation
