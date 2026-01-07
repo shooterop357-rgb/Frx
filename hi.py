@@ -1,4 +1,4 @@
-# ================= SMART MODERATION BOT (FINAL – WARNING FIXED) =================
+# ================= SMART MODERATION BOT (FINAL GROUP-WISE BUILD) =================
 
 import json
 import re
@@ -52,9 +52,9 @@ SLANG_REGEX = re.compile(
 EMOJI_ABUSE_PATTERN = re.compile(r"[🍆🍑💦🖕🤬🤮]")
 
 CUSTOM_BAD_WORDS = set()
-GROUP_STATS = {}
-USER_WARNED = {}  # (chat_id, user_id): timestamp
-WARN_COOLDOWN = 3600  # 1 hour
+GROUP_STATS = {}          # chat_id -> count
+USER_WARNED = {}          # (chat_id, user_id) -> timestamp
+WARN_COOLDOWN = 3600      # 1 hour
 
 # ================= FILE UTILS =================
 def load_json(path, default):
@@ -119,10 +119,15 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "<b>🤖 Smart Moderation Bot</b>\n\n"
-        "• Hindi + English + Slang Filter\n"
-        "• False delete fixed\n"
-        "• Daily report enabled\n\n"
-        "<b>Status:</b> Active",
+        "<b>🎯 Purpose</b>\n"
+        "• Maintain respectful communication\n"
+        "• Automatically block abusive language\n\n"
+        "<b>⚙️ How it Works</b>\n"
+        "• Silent background monitoring\n"
+        "• First violation shows a warning\n"
+        "• Further violations are deleted automatically\n"
+        "• Daily group-wise moderation report\n\n"
+        "🟢 <b>Status:</b> Active",
         parse_mode="HTML",
         reply_markup=keyboard
     )
@@ -149,7 +154,7 @@ async def list_words(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     words = sorted(DEFAULT_BAD_WORDS.union(CUSTOM_BAD_WORDS))
     await update.message.reply_text(
-        "<b>🚫 Banned Words</b>\n\n" + ", ".join(words),
+        "<b>🚫 Banned Words List</b>\n\n" + ", ".join(words),
         parse_mode="HTML"
     )
 
@@ -205,19 +210,23 @@ async def bad_word_filter(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "⚠️ Abusive language detected.\nNext time message will be deleted silently."
         )
 
-# ================= DAILY REPORT (JOB QUEUE – FIXED) =================
+# ================= DAILY REPORT (GROUP-WISE) =================
 async def daily_report(context: ContextTypes.DEFAULT_TYPE):
     app = context.application
-    for gid, count in GROUP_STATS.items():
+
+    for gid, count in list(GROUP_STATS.items()):
         try:
             await app.bot.send_message(
                 int(gid),
-                f"<b>📊 Daily Moderation Report</b>\n\nDeleted today: <b>{count}</b>",
+                f"<b>📊 Daily Moderation Report</b>\n\n"
+                f"• Total abusive messages removed today: <b>{count}</b>\n\n"
+                "🟢 <b>System status:</b> Active",
                 parse_mode="HTML"
             )
             GROUP_STATS[gid] = 0
         except:
             pass
+
     save_groups()
 
 # ================= SHUTDOWN =================
@@ -235,7 +244,7 @@ load_groups()
 
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# Job queue (NO WARNING)
+# JobQueue → no warning
 app.job_queue.run_daily(daily_report, time=time(23, 59))
 
 app.add_handler(CommandHandler("start", start))
