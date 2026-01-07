@@ -1,12 +1,11 @@
-# ================= SMART MODERATION BOT (FINAL FIXED) =================
+# ================= SMART MODERATION BOT (FINAL – WARNING FIXED) =================
 
-import asyncio
 import json
 import re
 import signal
 import sys
 import os
-from datetime import datetime, timedelta, time
+from datetime import datetime, time
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -14,7 +13,7 @@ from telegram.ext import (
     ContextTypes,
     MessageHandler,
     CommandHandler,
-    filters
+    filters,
 )
 
 # ================= CONFIG =================
@@ -150,7 +149,7 @@ async def list_words(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     words = sorted(DEFAULT_BAD_WORDS.union(CUSTOM_BAD_WORDS))
     await update.message.reply_text(
-        "<b>🚫 Banned Words List</b>\n\n" + ", ".join(words),
+        "<b>🚫 Banned Words</b>\n\n" + ", ".join(words),
         parse_mode="HTML"
     )
 
@@ -162,7 +161,7 @@ async def bad_word_filter(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if update.message.text.startswith("/"):
         return
 
-    # Mention safe
+    # Mentions safe
     if update.message.entities:
         for e in update.message.entities:
             if e.type in ("mention", "text_mention"):
@@ -206,32 +205,20 @@ async def bad_word_filter(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "⚠️ Abusive language detected.\nNext time message will be deleted silently."
         )
 
-# ================= DAILY REPORT =================
-async def daily_report_loop(app):
-    while True:
-        now = datetime.now()
-        target = datetime.combine(now.date(), time(23, 59))
-        if now >= target:
-            target += timedelta(days=1)
-
-        await asyncio.sleep((target - now).total_seconds())
-
-        for gid, count in GROUP_STATS.items():
-            try:
-                await app.bot.send_message(
-                    int(gid),
-                    f"<b>📊 Daily Moderation Report</b>\n\n"
-                    f"Deleted messages today: <b>{count}</b>",
-                    parse_mode="HTML"
-                )
-                GROUP_STATS[gid] = 0
-            except:
-                pass
-
-        save_groups()
-
-async def on_startup(app):
-    app.create_task(daily_report_loop(app))
+# ================= DAILY REPORT (JOB QUEUE – FIXED) =================
+async def daily_report(context: ContextTypes.DEFAULT_TYPE):
+    app = context.application
+    for gid, count in GROUP_STATS.items():
+        try:
+            await app.bot.send_message(
+                int(gid),
+                f"<b>📊 Daily Moderation Report</b>\n\nDeleted today: <b>{count}</b>",
+                parse_mode="HTML"
+            )
+            GROUP_STATS[gid] = 0
+        except:
+            pass
+    save_groups()
 
 # ================= SHUTDOWN =================
 def shutdown(sig, frame):
@@ -246,12 +233,10 @@ signal.signal(signal.SIGTERM, shutdown)
 load_words()
 load_groups()
 
-app = (
-    ApplicationBuilder()
-    .token(BOT_TOKEN)
-    .post_init(on_startup)
-    .build()
-)
+app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+# Job queue (NO WARNING)
+app.job_queue.run_daily(daily_report, time=time(23, 59))
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("addword", add_word))
