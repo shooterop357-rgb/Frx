@@ -18,7 +18,7 @@ from telegram.ext import (
 )
 
 # ================= CONFIG =================
-BOT_TOKEN = os.getenv("8437918087:AAEkAr2ZmCrQNF6UC2jde0REClfmiIglSRE")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     print("BOT_TOKEN missing")
     sys.exit(1)
