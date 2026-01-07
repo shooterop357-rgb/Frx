@@ -207,7 +207,8 @@ async def bad_word_filter(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         USER_WARNED[key] = now
         await ctx.bot.send_message(
             update.effective_chat.id,
-            "⚠️ Abusive language detected.\nNext time message will be deleted silently."
+            "⚠️ Abusive language detected.
+Further messages like this will be deleted automatically."
         )
 
 # ================= DAILY REPORT (GROUP-WISE) =================
